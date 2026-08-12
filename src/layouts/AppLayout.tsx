@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { Moon, Sun } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
-import logo from "@/assets/antologia-logo.png.asset.json";
+import logo from "@/assets/antologia-logo.png";
 import { cn } from "@/lib/utils";
 
 const navegacao = [
@@ -33,7 +33,7 @@ function TopBar() {
       <div className="mx-auto grid w-full max-w-[1360px] grid-cols-[minmax(0,1fr)_auto] items-center gap-6 px-5 py-5 sm:px-10">
         <Link to="/" className="flex min-w-0 items-center gap-4">
           <img
-            src={logo.url}
+            src={logo}
             alt="Antologia Incorporadora"
             className="h-7 w-auto shrink-0 brightness-0 dark:brightness-100"
           />
