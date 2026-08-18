@@ -26,7 +26,7 @@ export const EMPREENDIMENTOS_INICIAIS: Empreendimento[] = [
     numeroUnidades: 358,
     valorMedioUnidade: 95_000,
     percentualPermuta: 0.264,
-    dataLancamento: "2027-06",
+    dataLancamento: "2025-08",
     regraRecebimento: "brise",
     ativo: true,
   },

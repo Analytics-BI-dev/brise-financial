@@ -1,8 +1,8 @@
 import { Dado, Rolagem, StatusPill, Td, Th } from "./comum";
 import { statusDaDiferenca, type Auditoria } from "@/financial-engine/audit";
 import type { ResultadoSimulacao } from "@/types";
-import { formatarMeses, formatarMoeda, formatarNumero } from "@/utils/format";
-import { rotuloMes } from "@/utils/date";
+import { formatarMeses, formatarMoeda, formatarNumero, formatarPercentual } from "@/utils/format";
+import { rotuloDia, rotuloMes } from "@/utils/date";
 
 /**
  * Calculation memory of the antecipation: which receipts were moved, to which
@@ -26,7 +26,7 @@ export function MemoriaAntecipacao({
       ? totalAjustado
       : auditoria.semestres.filter((s) => s.mesAbs < corte).reduce((a, s) => a + s.total, 0);
   const noCorte =
-    corte === null ? 0 : auditoria.semestres.find((s) => s.mesAbs === corte)?.total ?? 0;
+    corte === null ? 0 : (auditoria.semestres.find((s) => s.mesAbs === corte)?.total ?? 0);
 
   const ultimoOriginal = auditoria.semestresOriginais.at(-1)?.data ?? null;
   const ultimoAjustado = auditoria.semestres.at(-1)?.data ?? null;
@@ -35,13 +35,19 @@ export function MemoriaAntecipacao({
       ? ant.mesUltimoOriginalAbs - ant.mesCorteAbs
       : 0;
 
-  const diferencaTotal = totalOriginal - totalAjustado;
+  const correcaoRetirada = ant.totalCorrecaoRetirada;
+  const diferencaTotal = totalOriginal - correcaoRetirada - totalAjustado;
+  const tir = resultado.tirDetalhe;
   const diferencaReconciliacao = anteriores + noCorte - resultado.indicadores.valorProjetado;
 
   return (
     <div className="space-y-5">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Dado rotulo="Estado da opção" valor={ant.ativa ? "Ativo" : "Inativo"} destaque={ant.ativa} />
+        <Dado
+          rotulo="Estado da opção"
+          valor={ant.ativa ? "Ativo" : "Inativo"}
+          destaque={ant.ativa}
+        />
         <Dado
           rotulo="Última entrega"
           valor={ant.dataUltimaEntrega ? rotuloMes(ant.dataUltimaEntrega) : "—"}
@@ -89,7 +95,19 @@ export function MemoriaAntecipacao({
           valor={`${auditoria.semestresOriginais.length} → ${auditoria.semestres.length}`}
         />
         <Dado rotulo="Total antes da antecipação" valor={formatarMoeda(totalOriginal, true)} />
+        <Dado rotulo="IPCA futuro abdicado" valor={formatarMoeda(correcaoRetirada, true)} />
         <Dado rotulo="Total depois da antecipação" valor={formatarMoeda(totalAjustado, true)} />
+        <Dado
+          rotulo="Valor-base dos antecipados (sem IPCA)"
+          valor={formatarMoeda(
+            ant.parcelas.reduce((a, p) => a + p.valorBase, 0),
+            true,
+          )}
+        />
+        <Dado
+          rotulo="Valor original dos antecipados"
+          valor={formatarMoeda(ant.totalOriginalDosAntecipados, true)}
+        />
       </div>
 
       <div>
@@ -141,9 +159,13 @@ export function MemoriaAntecipacao({
                   <tr key={`${p.empreendimentoId}-${p.dataOriginal}-${i}`}>
                     <Td>{nomes.get(p.empreendimentoId) ?? p.empreendimentoId}</Td>
                     <Td>{rotuloMes(p.dataOriginal)}</Td>
-                    <Td className="text-right">{formatarMoeda(p.valor, true)}</Td>
+                    <Td className="text-right">{formatarMoeda(p.valorBase, true)}</Td>
+                    <Td className="text-right">{formatarMoeda(p.valorOriginalCorrigido, true)}</Td>
+                    <Td className="text-right">{formatarMoeda(p.valorAntecipado, true)}</Td>
+                    <Td className="text-right text-muted-foreground">
+                      − {formatarMoeda(p.correcaoRetirada, true)}
+                    </Td>
                     <Td>{ant.dataCorte ? rotuloMes(ant.dataCorte) : "—"}</Td>
-                    <Td className="text-primary">Antecipado</Td>
                   </tr>
                 ))}
               </tbody>
@@ -187,8 +209,43 @@ export function MemoriaAntecipacao({
           </span>
           <StatusPill status={statusDaDiferenca(diferencaTotal)} />
           <span className="numeric">
-            Total antes vs. depois: R$ {diferencaTotal.toFixed(4)}
+            Antes − IPCA abdicado vs. depois: R$ {diferencaTotal.toFixed(4)}
           </span>
+        </div>
+      </div>
+
+      <div className="rounded-md border border-border/60 bg-muted/20 p-4">
+        <p className="mb-3 text-xs uppercase tracking-[0.14em] text-muted-foreground">
+          Memória da TIR
+        </p>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <Dado rotulo="Data inicial (hoje)" valor={rotuloDia(tir.dataInicio)} />
+          <Dado
+            rotulo="Investimento na data inicial"
+            valor={`− ${formatarMoeda(tir.valorInvestido, true)}`}
+          />
+          <Dado
+            rotulo="Recebimentos considerados"
+            valor={formatarNumero(tir.quantidadeRecebimentos)}
+          />
+          <Dado rotulo="Total recebido" valor={formatarMoeda(tir.totalRecebido, true)} />
+          <Dado
+            rotulo="Primeiro recebimento"
+            valor={tir.dataPrimeiroRecebimento ? rotuloMes(tir.dataPrimeiroRecebimento) : "—"}
+          />
+          <Dado
+            rotulo="Último recebimento"
+            valor={tir.dataUltimoRecebimento ? rotuloMes(tir.dataUltimoRecebimento) : "—"}
+          />
+          <Dado
+            rotulo="TIR anual (XIRR)"
+            valor={tir.tirAnual === null ? "—" : formatarPercentual(tir.tirAnual, 3)}
+            destaque
+          />
+          <Dado
+            rotulo="TIR mensal (derivada da anual)"
+            valor={tir.tirMensal === null ? "—" : formatarPercentual(tir.tirMensal, 3)}
+          />
         </div>
       </div>
     </div>

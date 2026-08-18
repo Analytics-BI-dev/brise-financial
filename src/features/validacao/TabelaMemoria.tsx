@@ -181,17 +181,17 @@ export function TabelaMemoria({
                     <Td>{formatarMoeda(l.entrada)}</Td>
                     <Td>{formatarMoeda(l.parcelas)}</Td>
                     <Td>{formatarMoeda(l.entrega)}</Td>
-                    <Td className={investidor ? "" : "text-foreground"} negativo={l.recebimento < 0}>
+                    <Td
+                      className={investidor ? "" : "text-foreground"}
+                      negativo={l.recebimento < 0}
+                    >
                       {formatarMoeda(l.recebimento)}
                     </Td>
                     <Td>{formatarMoeda(l.recebimentoAcumulado)}</Td>
                     <Td>{formatarPercentual(l.percentualPermuta, 2)}</Td>
                     <Td>{formatarMoeda(l.permuta)}</Td>
                     <Td>{formatarPercentual(l.participacao, 4)}</Td>
-                    <Td
-                      className={investidor ? "text-primary" : ""}
-                      negativo={l.investidor < 0}
-                    >
+                    <Td className={investidor ? "text-primary" : ""} negativo={l.investidor < 0}>
                       {formatarMoeda(l.investidor, true)}
                     </Td>
                     <Td>{formatarMoeda(l.investidorAcumulado, true)}</Td>
@@ -278,9 +278,7 @@ export function TabelaMemoria({
         </table>
       </Rolagem>
       {!linhas.length ? (
-        <p className="mt-4 text-sm text-muted-foreground">
-          Nenhum mês no intervalo selecionado.
-        </p>
+        <p className="mt-4 text-sm text-muted-foreground">Nenhum mês no intervalo selecionado.</p>
       ) : null}
     </SectionCard>
   );

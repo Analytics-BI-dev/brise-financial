@@ -9,11 +9,15 @@ import type {
   ResultadoSimulacao,
   ResumoEmpreendimento,
 } from "@/types";
-import { anoDeIso, isoDeMesAbsoluto, mesAbsoluto } from "@/utils/date";
-import { aplicarAntecipacao, type ResultadoAntecipacao } from "./antecipacao";
-import { mesDePagamento } from "./calendario";
-import { calcularPayback, calcularRoi, calcularTirMensal, calcularVpl } from "./metrics";
-import { fatorCorrecao, taxaAnualParaMensal, taxaMensalParaAnual } from "./rates";
+import { anoDeIso, dataDoMes, isoDeMesAbsoluto, isoDoDia, mesAbsoluto } from "@/utils/date";
+import {
+  aplicarAntecipacao,
+  type RecebimentoInvestidor,
+  type ResultadoAntecipacao,
+} from "./antecipacao";
+import { mesAtualAbs, mesPagamentoInvestidor } from "./calendario";
+import { calcularPayback, calcularRoi, calcularVpl, calcularXirr } from "./metrics";
+import { fatorCorrecao, taxaAnualParaMensal } from "./rates";
 import { curvaDeVendas } from "./sales";
 import { recebimentosDoLote } from "./rules";
 import { calcularParticipacao, calcularValorInvestido, mesDeEntrega } from "./valuation";
@@ -48,14 +52,19 @@ export function simular({
 
   const curva = curvaDeVendas(cenario);
 
-  /** Investor receipts (already semiannual) per empreendimento, by abs month. */
-  const recebimentosOriginais = new Map<string, Map<number, number>>();
+  // The investor buys today: nothing generated before the entry can be paid in
+  // the past — it is accumulated into the first semiannual closing after it.
+  const mesEntradaAbs = mesAtualAbs();
+
+  /** Investor receipts kept as base value + indexation rule. */
+  const recebimentosInvestidor: RecebimentoInvestidor[] = [];
   const mesesEntrega: number[] = [];
 
   for (const e of ativos) {
     const lancamento = mesAbsoluto(e.dataLancamento);
-    const mapa = new Map<number, number>();
     let vgvRealizado = 0;
+    // Brise and Coliv installments accrue IPCA between the sale and the receipt.
+    const indexado = e.regraRecebimento === "brise" || e.regraRecebimento === "coliv";
 
     for (let mes = 0; mes < MESES_ATE_ENTREGA; mes++) {
       const unidades = Math.max(0, e.numeroUnidades) * (curva[mes] ?? 0);
@@ -76,13 +85,18 @@ export function simular({
       for (const [offset, valor] of lote) {
         // Monthly cash of the empreendimento → investor's permuta slice,
         // consolidated in the next semiannual payment date.
-        const pagamento = mesDePagamento(lancamento + offset);
-        const parcela = valor * Math.max(0, e.percentualPermuta) * participacao;
-        mapa.set(pagamento, (mapa.get(pagamento) ?? 0) + parcela);
+        const mesGeracaoAbs = lancamento + offset;
+        recebimentosInvestidor.push({
+          empreendimentoId: e.id,
+          mesVendaAbs: lancamento + mes,
+          mesGeracaoAbs,
+          mesPagamentoAbs: mesPagamentoInvestidor(mesGeracaoAbs, mesEntradaAbs),
+          valorBase: valor * Math.max(0, e.percentualPermuta) * participacao,
+          indexado,
+        });
       }
     }
 
-    recebimentosOriginais.set(e.id, mapa);
     mesesEntrega.push(lancamento + MESES_ATE_ENTREGA);
     resumos.push({
       id: e.id,
@@ -98,9 +112,10 @@ export function simular({
 
   // Schedule transformation applied once, over the finished flow.
   const { fluxo: recebimentos, antecipacao } = aplicarAntecipacao(
-    recebimentosOriginais,
+    recebimentosInvestidor,
     mesesEntrega,
     premissas.anteciparRecebimentos === true,
+    ipcaMensal,
   );
 
   let mesInicio = Number.POSITIVE_INFINITY;
@@ -118,8 +133,8 @@ export function simular({
   }
 
   const descontoMensal = taxaAnualParaMensal(premissas.taxaDescontoAnual);
-  // Investment happens at the first launch of the portfolio.
-  const mesInvestimento = mesBaseIpca;
+  // Investment happens today.
+  const mesInvestimento = mesEntradaAbs;
 
   const fluxoMensal: FluxoMensal[] = [];
   let acumulado = 0;
@@ -161,11 +176,31 @@ export function simular({
     resumo.retornoInvestidor = retornoPorId.get(resumo.id) ?? 0;
   }
 
-  // Investor flow for the IRR: t = 0 is the investment month and the idle
-  // months before the first receipt are explicit zeros.
+  // Investor flow for the payback / NPV (monthly series from the investment).
   const defasagem = Math.max(0, mesInicio - mesInvestimento - 1);
   const fluxos = [...Array<number>(defasagem).fill(0), ...fluxoMensal.map((f) => f.receita)];
-  const tirMensal = calcularTirMensal(valorInvestido, fluxos);
+
+  // IRR (XIRR): the investment happens TODAY and every receipt keeps its real
+  // date, so the waiting period until the first payment affects the return.
+  const hoje = new Date();
+  const recebimentosTir = fluxoMensal
+    .filter((f) => f.receita !== 0)
+    .map((f) => ({ data: dataDoMes(f.data), valor: f.receita, dataIso: f.data }));
+  const tir = calcularXirr([
+    { data: hoje, valor: -valorInvestido },
+    ...recebimentosTir.map((r) => ({ data: r.data, valor: r.valor })),
+  ]);
+  const tirMensal = tir === null ? null : Math.pow(1 + tir, 1 / 12) - 1;
+  const tirDetalhe = {
+    dataInicio: isoDoDia(hoje),
+    valorInvestido,
+    quantidadeRecebimentos: recebimentosTir.length,
+    totalRecebido: recebimentosTir.reduce((a, r) => a + r.valor, 0),
+    dataPrimeiroRecebimento: recebimentosTir[0]?.dataIso ?? null,
+    dataUltimoRecebimento: recebimentosTir.at(-1)?.dataIso ?? null,
+    tirAnual: tir,
+    tirMensal,
+  };
 
   const marcos = calcularMarcos(fluxoMensal, receitaTotal, valorInvestido);
 
@@ -174,13 +209,14 @@ export function simular({
 
   return {
     antecipacao,
+    tirDetalhe,
     indicadores: {
       valorInvestido,
       participacao,
       valorProjetado: receitaTotal,
       lucro: receitaTotal - valorInvestido,
       roi: calcularRoi(valorInvestido, receitaTotal),
-      tir: tirMensal === null ? null : taxaMensalParaAnual(tirMensal),
+      tir,
       tirMensal,
       paybackMeses: calcularPayback(valorInvestido, fluxos),
       prazoRecebimentoMeses,
@@ -246,8 +282,13 @@ function agruparPorAno(fluxo: FluxoMensal[]): FluxoAnual[] {
   const mapa = new Map<number, FluxoAnual>();
   for (const mes of fluxo) {
     const ano = anoDeIso(mes.data);
-    const atual =
-      mapa.get(ano) ?? { ano, receita: 0, receitaCorrigida: 0, valorDescontado: 0, acumulado: 0 };
+    const atual = mapa.get(ano) ?? {
+      ano,
+      receita: 0,
+      receitaCorrigida: 0,
+      valorDescontado: 0,
+      acumulado: 0,
+    };
     atual.receita += mes.receita;
     atual.receitaCorrigida += mes.receitaCorrigida;
     atual.valorDescontado += mes.valorDescontado;
@@ -265,6 +306,16 @@ function vazio(
 ): ResultadoSimulacao {
   return {
     antecipacao,
+    tirDetalhe: {
+      dataInicio: isoDoDia(new Date()),
+      valorInvestido,
+      quantidadeRecebimentos: 0,
+      totalRecebido: 0,
+      dataPrimeiroRecebimento: null,
+      dataUltimoRecebimento: null,
+      tirAnual: null,
+      tirMensal: null,
+    },
     indicadores: {
       valorInvestido,
       participacao,
@@ -309,5 +360,9 @@ function antecipacaoVazia(): ResultadoAntecipacao {
     parcelas: [],
     valorNormalCorte: 0,
     valorFinalCorte: 0,
+    totalOriginalDosAntecipados: 0,
+    totalCorrecaoRetirada: 0,
+    totalOriginal: 0,
+    totalAjustado: 0,
   };
 }

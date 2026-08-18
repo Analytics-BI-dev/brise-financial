@@ -47,7 +47,10 @@ export function formatarMeses(meses: number | null): string {
 }
 
 export function parseNumeroInput(valor: string): number {
-  const limpo = valor.replace(/[^\d,.-]/g, "").replace(/\./g, "").replace(",", ".");
+  const limpo = valor
+    .replace(/[^\d,.-]/g, "")
+    .replace(/\./g, "")
+    .replace(",", ".");
   const n = Number(limpo);
   return Number.isFinite(n) ? n : 0;
 }

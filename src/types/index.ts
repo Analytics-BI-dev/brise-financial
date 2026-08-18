@@ -131,8 +131,23 @@ export interface MarcoRetorno {
   acumulado: number;
 }
 
+/** Memory of the IRR: it starts today and consumes the final investor flow. */
+export interface DetalheTir {
+  /** ISO day (YYYY-MM-DD) used as t = 0 of the IRR. */
+  dataInicio: string;
+  valorInvestido: number;
+  quantidadeRecebimentos: number;
+  totalRecebido: number;
+  dataPrimeiroRecebimento: string | null;
+  dataUltimoRecebimento: string | null;
+  tirAnual: number | null;
+  tirMensal: number | null;
+}
+
 export interface ResultadoSimulacao {
   indicadores: IndicadoresInvestimento;
+  /** Memory of the IRR calculation (start date, flows, resulting rates). */
+  tirDetalhe: DetalheTir;
   /** Memory of the antecipation transformation applied to the flow. */
   antecipacao: ResultadoAntecipacao;
   fluxoMensal: FluxoMensal[];

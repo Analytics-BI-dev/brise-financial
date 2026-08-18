@@ -39,3 +39,23 @@ export function rotuloMes(iso: string): string {
 export function anoDeIso(iso: string): number {
   return parseMes(iso).ano;
 }
+
+/** Date object of the first day of an ISO month (YYYY-MM), in local time. */
+export function dataDoMes(iso: string): Date {
+  const { ano, mes } = parseMes(iso);
+  return new Date(ano, mes, 1);
+}
+
+/** ISO day (YYYY-MM-DD) of a Date, in local time. */
+export function isoDoDia(data: Date): string {
+  const ano = data.getFullYear();
+  const mes = String(data.getMonth() + 1).padStart(2, "0");
+  const dia = String(data.getDate()).padStart(2, "0");
+  return `${ano}-${mes}-${dia}`;
+}
+
+/** Human label of an ISO day: dd/mm/aaaa. */
+export function rotuloDia(iso: string): string {
+  const [ano, mes, dia] = iso.split("-");
+  return `${dia}/${mes}/${ano}`;
+}

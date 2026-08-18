@@ -85,7 +85,9 @@ export function Consolidacao({ auditoria }: { auditoria: Auditoria }) {
                             <tr key={m.data}>
                               <Td className="w-24">{rotuloMes(m.data)}</Td>
                               {nomes.map((n) => (
-                                <Td key={n.id}>{formatarMoeda(m.porEmpreendimento[n.id] ?? 0, true)}</Td>
+                                <Td key={n.id}>
+                                  {formatarMoeda(m.porEmpreendimento[n.id] ?? 0, true)}
+                                </Td>
                               ))}
                               <Td className="text-foreground">{formatarMoeda(m.total, true)}</Td>
                             </tr>
@@ -93,7 +95,9 @@ export function Consolidacao({ auditoria }: { auditoria: Auditoria }) {
                           <tr>
                             <Td className="text-muted-foreground">Soma do semestre</Td>
                             {nomes.map((n) => (
-                              <Td key={n.id}>{formatarMoeda(s.porEmpreendimento[n.id] ?? 0, true)}</Td>
+                              <Td key={n.id}>
+                                {formatarMoeda(s.porEmpreendimento[n.id] ?? 0, true)}
+                              </Td>
                             ))}
                             <Td className="text-primary">{formatarMoeda(s.total, true)}</Td>
                           </tr>

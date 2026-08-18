@@ -43,7 +43,10 @@ export function CardRegra({ memoria }: { memoria: MemoriaEmpreendimento }) {
             <Item rotulo="Parcelado na obra (20%)" valor={formatarMoeda(meta.parcelado ?? 0)} />
             <Item rotulo="Meses restantes até a entrega" valor={String(meta.meses ?? 0)} />
             <Item rotulo="Parcela mensal" valor={formatarMoeda(meta.parcela ?? 0, true)} />
-            <Item rotulo="Reservado para a entrega (70%)" valor={formatarMoeda(meta.naEntrega ?? 0)} />
+            <Item
+              rotulo="Reservado para a entrega (70%)"
+              valor={formatarMoeda(meta.naEntrega ?? 0)}
+            />
             <Item rotulo="Data da entrega" valor={rotuloMes(memoria.dataEntrega)} />
           </>
         ) : null}
@@ -52,7 +55,10 @@ export function CardRegra({ memoria }: { memoria: MemoriaEmpreendimento }) {
           <>
             <Item rotulo="Valor vendido no 1º mês" valor={formatarMoeda(meta.total ?? 0)} />
             <Item rotulo="Meses restantes" valor={String(meta.meses ?? 0)} />
-            <Item rotulo="Valor mensal distribuído" valor={formatarMoeda(meta.parcela ?? 0, true)} />
+            <Item
+              rotulo="Valor mensal distribuído"
+              valor={formatarMoeda(meta.parcela ?? 0, true)}
+            />
             <Item
               rotulo="Último mês do recebimento"
               valor={primeiro?.ultimoRecebimento ? rotuloMes(primeiro.ultimoRecebimento) : "—"}
@@ -236,8 +242,8 @@ export function AuditoriaLotes({ memoria }: { memoria: MemoriaEmpreendimento }) 
         </table>
       </Rolagem>
       <p className="mt-4 text-xs font-light text-muted-foreground">
-        Validação por lote: a soma de todos os componentes deve corresponder a 100% do valor
-        vendido ({formatarPercentual(1, 0)}). Tolerância de arredondamento: R$ 0,05.
+        Validação por lote: a soma de todos os componentes deve corresponder a 100% do valor vendido
+        ({formatarPercentual(1, 0)}). Tolerância de arredondamento: R$ 0,05.
       </p>
     </SectionCard>
   );

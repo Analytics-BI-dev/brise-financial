@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Dado } from "@/features/validacao/comum";
 import { CardRegra, AuditoriaLotes } from "@/features/validacao/AuditoriaLotes";
 import { TabelaMemoria } from "@/features/validacao/TabelaMemoria";
+import { TabelaRecebimentos } from "@/features/validacao/TabelaRecebimentos";
 import { Consolidacao } from "@/features/validacao/Consolidacao";
 import { Reconciliacao, TestesAutomaticos } from "@/features/validacao/Reconciliacao";
 import { Homologacao, TesteIpca } from "@/features/validacao/Homologacao";
@@ -273,6 +274,9 @@ function ValidacaoPage() {
         ) : null}
 
         {memoria ? <AuditoriaLotes memoria={memoria} /> : null}
+        {memoria && (memoria.regra === "brise" || memoria.regra === "coliv") ? (
+          <TabelaRecebimentos memoria={memoria} />
+        ) : null}
 
         <Consolidacao auditoria={auditoria} />
         <SectionCard

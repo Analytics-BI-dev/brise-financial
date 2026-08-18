@@ -9,9 +9,15 @@ import type {
 import { isoDeMesAbsoluto, mesAbsoluto } from "@/utils/date";
 import { fatorCorrecao, taxaAnualParaMensal } from "./rates";
 import { curvaDeVendas, distribuicaoNormalizada } from "./sales";
-import { detalharLote, type DetalheLote } from "./rules";
-import { mesDePagamento } from "./calendario";
-import { aplicarAntecipacao, type ResultadoAntecipacao } from "./antecipacao";
+import { detalharLote, type DetalheLote, type TipoComponente } from "./rules";
+import { mesAtualAbs, mesDePagamento, mesPagamentoInvestidor } from "./calendario";
+import {
+  aplicarAntecipacao,
+  valorNoLimite,
+  type RecebimentoAjustado,
+  type RecebimentoInvestidor,
+  type ResultadoAntecipacao,
+} from "./antecipacao";
 import { calcularParticipacao, calcularValorInvestido, mesDeEntrega } from "./valuation";
 
 /**
@@ -30,6 +36,8 @@ export interface ContextoAuditoria {
   participacao: number;
   ipcaMensal: number;
   mesBaseIpca: number;
+  /** First semiannual closing available to the investor (entry = today). */
+  mesEntradaAbs: number;
   curva: number[];
   distribuicao: number[];
 }
@@ -59,9 +67,31 @@ export function contextoAuditoria({
     participacao,
     ipcaMensal,
     mesBaseIpca,
+    mesEntradaAbs: mesAtualAbs(),
     curva: curvaDeVendas(cenario),
     distribuicao: distribuicaoNormalizada(cenario),
   };
+}
+
+/** One expanded receipt: sale, indexation and final value, for auditing. */
+export interface DetalheRecebimento {
+  empreendimentoId: string;
+  empreendimento: string;
+  regra: RegraRecebimentoId;
+  tipo: TipoComponente;
+  dataVenda: string;
+  unidades: number;
+  valorBaseUnidade: number;
+  fatorVenda: number;
+  valorUnidadeNaVenda: number;
+  valorBaseRecebimento: number;
+  dataOriginal: string;
+  mesesPosVenda: number;
+  fatorPosVenda: number;
+  valorCorrigido: number;
+  dataPagamento: string;
+  /** Generated before the investor entered — paid in the first closing. */
+  historico: boolean;
 }
 
 /** One monthly batch of sales, with its full receipt breakdown. */
@@ -124,6 +154,10 @@ export interface MemoriaEmpreendimento {
   valorMedioUnidade: number;
   lotes: LoteAuditoria[];
   linhas: LinhaMemoria[];
+  /** Investor receipts of this empreendimento, as base value + indexation. */
+  recebimentos: RecebimentoInvestidor[];
+  /** Fully expanded receipts, for the validation page. */
+  detalhes: DetalheRecebimento[];
   totais: {
     unidades: number;
     vgvBase: number;
@@ -139,6 +173,10 @@ export function memoriaEmpreendimento(
   ctx: ContextoAuditoria,
 ): MemoriaEmpreendimento {
   const lancamento = mesAbsoluto(e.dataLancamento);
+  const permutaPercentual = Math.max(0, e.percentualPermuta);
+  const indexado = e.regraRecebimento === "brise" || e.regraRecebimento === "coliv";
+  const recebimentos: RecebimentoInvestidor[] = [];
+  const detalhes: DetalheRecebimento[] = [];
   const lotes: LoteAuditoria[] = [];
   const porMes = new Map<
     number,
@@ -175,12 +213,47 @@ export function memoriaEmpreendimento(
         if (c.offset > ultimo) ultimo = c.offset;
       }
       const abs = lancamento + c.offset;
+      // Brise / Coliv installments accrue IPCA between the sale and the receipt.
+      const fatorRecebimento = indexado
+        ? fatorCorrecao(ctx.ipcaMensal, Math.max(0, c.offset - mes))
+        : 1;
+      const valorRecebido = c.valor * fatorRecebimento;
       const atual = porMes.get(abs) ?? { aVista: 0, entrada: 0, parcelas: 0, entrega: 0 };
-      if (c.tipo === "a-vista") atual.aVista += c.valor;
-      else if (c.tipo === "entrada") atual.entrada += c.valor;
-      else if (c.tipo === "entrega") atual.entrega += c.valor;
-      else atual.parcelas += c.valor;
+      if (c.tipo === "a-vista") atual.aVista += valorRecebido;
+      else if (c.tipo === "entrada") atual.entrada += valorRecebido;
+      else if (c.tipo === "entrega") atual.entrega += valorRecebido;
+      else atual.parcelas += valorRecebido;
       porMes.set(abs, atual);
+
+      if (c.valor !== 0) {
+        recebimentos.push({
+          empreendimentoId: e.id,
+          mesVendaAbs: lancamento + mes,
+          mesGeracaoAbs: abs,
+          mesPagamentoAbs: mesPagamentoInvestidor(abs, ctx.mesEntradaAbs),
+          valorBase: c.valor * permutaPercentual * ctx.participacao,
+          indexado,
+        });
+
+        detalhes.push({
+          empreendimentoId: e.id,
+          empreendimento: e.nome,
+          regra: e.regraRecebimento,
+          tipo: c.tipo,
+          dataVenda: isoDeMesAbsoluto(lancamento + mes),
+          unidades,
+          valorBaseUnidade: valorBase,
+          fatorVenda: fator,
+          valorUnidadeNaVenda: valorCorrigido,
+          valorBaseRecebimento: c.valor,
+          dataOriginal: isoDeMesAbsoluto(abs),
+          mesesPosVenda: Math.max(0, c.offset - mes),
+          fatorPosVenda: fatorRecebimento,
+          valorCorrigido: valorRecebido,
+          dataPagamento: isoDeMesAbsoluto(mesPagamentoInvestidor(abs, ctx.mesEntradaAbs)),
+          historico: abs < ctx.mesEntradaAbs,
+        });
+      }
     }
 
     unidadesAcumuladas += unidades;
@@ -218,7 +291,6 @@ export function memoriaEmpreendimento(
   const linhas: LinhaMemoria[] = [];
   let acumulado = 0;
   let acumuladoInvestidor = 0;
-  const permutaPercentual = Math.max(0, e.percentualPermuta);
 
   for (const mesAbs of meses) {
     const v = porMes.get(mesAbs)!;
@@ -240,7 +312,7 @@ export function memoriaEmpreendimento(
       participacao: ctx.participacao,
       investidor,
       investidorAcumulado: acumuladoInvestidor,
-      mesPagamento: isoDeMesAbsoluto(mesDePagamento(mesAbs)),
+      mesPagamento: isoDeMesAbsoluto(mesPagamentoInvestidor(mesAbs, ctx.mesEntradaAbs)),
       venda: porLote.get(mesAbs) ?? null,
     });
   }
@@ -256,6 +328,8 @@ export function memoriaEmpreendimento(
     valorMedioUnidade: e.valorMedioUnidade,
     lotes,
     linhas,
+    recebimentos,
+    detalhes,
     totais: {
       unidades: unidadesAcumuladas,
       vgvBase: lotes.reduce((a, l) => a + l.vgvBase, 0),
@@ -300,33 +374,12 @@ export function auditar(entrada: {
 
   // Semiannual consolidation: every monthly receipt is paid on the next
   // january/july closing — the same bucket used by the engine.
-  const buckets = new Map<
-    number,
-    { meses: Map<number, Record<string, number>>; porEmpreendimento: Record<string, number> }
-  >();
+  type Bucket = {
+    meses: Map<number, Record<string, number>>;
+    porEmpreendimento: Record<string, number>;
+  };
 
-  for (const m of memorias) {
-    for (const linha of m.linhas) {
-      const pagamento = mesDePagamento(linha.mesAbs);
-      const bucket = buckets.get(pagamento) ?? {
-        meses: new Map<number, Record<string, number>>(),
-        porEmpreendimento: {} as Record<string, number>,
-      };
-      bucket.porEmpreendimento[m.id] = (bucket.porEmpreendimento[m.id] ?? 0) + linha.investidor;
-      const mesDetalhe: Record<string, number> = bucket.meses.get(linha.mesAbs) ?? {};
-      mesDetalhe[m.id] = (mesDetalhe[m.id] ?? 0) + linha.investidor;
-
-      bucket.meses.set(linha.mesAbs, mesDetalhe);
-      buckets.set(pagamento, bucket);
-    }
-  }
-
-  const construir = (
-    fonte: Map<
-      number,
-      { meses: Map<number, Record<string, number>>; porEmpreendimento: Record<string, number> }
-    >,
-  ): SemestreAuditoria[] => {
+  const construir = (fonte: Map<number, Bucket>): SemestreAuditoria[] => {
     const lista: SemestreAuditoria[] = [];
     let acumulado = 0;
     for (const mesAbs of [...fonte.keys()].sort((a, b) => a - b)) {
@@ -357,49 +410,57 @@ export function auditar(entrada: {
     return lista;
   };
 
-  const semestresOriginais = construir(buckets);
+  const agrupar = (
+    itens: { id: string; mesPagamentoAbs: number; mesGeracaoAbs: number; valor: number }[],
+  ): Map<number, Bucket> => {
+    const mapa = new Map<number, Bucket>();
+    for (const item of itens) {
+      if (item.valor === 0) continue;
+      const bucket = mapa.get(item.mesPagamentoAbs) ?? {
+        meses: new Map<number, Record<string, number>>(),
+        porEmpreendimento: {} as Record<string, number>,
+      };
+      bucket.porEmpreendimento[item.id] = (bucket.porEmpreendimento[item.id] ?? 0) + item.valor;
+      const detalhe = bucket.meses.get(item.mesGeracaoAbs) ?? {};
+      detalhe[item.id] = (detalhe[item.id] ?? 0) + item.valor;
+      bucket.meses.set(item.mesGeracaoAbs, detalhe);
+      mapa.set(item.mesPagamentoAbs, bucket);
+    }
+    return mapa;
+  };
+
+  const recebimentos = memorias.flatMap((m) => m.recebimentos);
+
+  const semestresOriginais = construir(
+    agrupar(
+      recebimentos.map((r) => ({
+        id: r.empreendimentoId,
+        mesPagamentoAbs: r.mesPagamentoAbs,
+        mesGeracaoAbs: r.mesGeracaoAbs,
+        valor: valorNoLimite(r, contexto.ipcaMensal),
+      })),
+    ),
+  );
 
   // The antecipation is a transformation over the finished flow — same rule
   // and same cut date used by the engine.
-  const fluxoPorEmpreendimento = new Map<string, Map<number, number>>();
-  for (const [mesAbs, bucket] of buckets) {
-    for (const [id, valor] of Object.entries(bucket.porEmpreendimento)) {
-      const mapa = fluxoPorEmpreendimento.get(id) ?? new Map<number, number>();
-      mapa.set(mesAbs, (mapa.get(mesAbs) ?? 0) + valor);
-      fluxoPorEmpreendimento.set(id, mapa);
-    }
-  }
-  const { antecipacao } = aplicarAntecipacao(
-    fluxoPorEmpreendimento,
+  const { ajustados, antecipacao } = aplicarAntecipacao(
+    recebimentos,
     contexto.ativos.map((e) => mesAbsoluto(e.dataLancamento) + MESES_ATE_ENTREGA),
     contexto.premissas.anteciparRecebimentos === true,
+    contexto.ipcaMensal,
   );
 
-  if (antecipacao.ativa && antecipacao.mesCorteAbs !== null) {
-    const corte = antecipacao.mesCorteAbs;
-    const destino = buckets.get(corte) ?? {
-      meses: new Map<number, Record<string, number>>(),
-      porEmpreendimento: {} as Record<string, number>,
-    };
-    for (const mesAbs of [...buckets.keys()]) {
-      if (mesAbs <= corte) continue;
-      const bucket = buckets.get(mesAbs)!;
-      for (const [id, valor] of Object.entries(bucket.porEmpreendimento)) {
-        destino.porEmpreendimento[id] = (destino.porEmpreendimento[id] ?? 0) + valor;
-      }
-      for (const [abs, detalhe] of bucket.meses) {
-        const atual = destino.meses.get(abs) ?? {};
-        for (const [id, valor] of Object.entries(detalhe)) {
-          atual[id] = (atual[id] ?? 0) + valor;
-        }
-        destino.meses.set(abs, atual);
-      }
-      buckets.delete(mesAbs);
-    }
-    buckets.set(corte, destino);
-  }
-
-  const semestres = construir(buckets);
+  const semestres = construir(
+    agrupar(
+      ajustados.map((a: RecebimentoAjustado) => ({
+        id: a.recebimento.empreendimentoId,
+        mesPagamentoAbs: a.mesPagamentoAbs,
+        mesGeracaoAbs: a.recebimento.mesGeracaoAbs,
+        valor: a.valor,
+      })),
+    ),
+  );
 
   return {
     contexto,
@@ -474,11 +535,17 @@ export function reconciliar(
     status: statusDaDiferenca(calculado - exibido),
   });
 
-  const somaMensal = auditoria.memorias.reduce((a, m) => a + m.totais.investidor, 0);
   const somaSemestral = auditoria.semestres.reduce((a, s) => a + s.total, 0);
+  // Per empreendimento, already reflecting the antecipation.
+  const ajustadoPorId = new Map<string, number>();
+  for (const s of auditoria.semestres) {
+    for (const [id, valor] of Object.entries(s.porEmpreendimento)) {
+      ajustadoPorId.set(id, (ajustadoPorId.get(id) ?? 0) + valor);
+    }
+  }
 
   const linhas: LinhaReconciliacao[] = [
-    linha("Valor projetado", somaMensal, resultado.indicadores.valorProjetado),
+    linha("Valor projetado", somaSemestral, resultado.indicadores.valorProjetado),
     linha("Soma dos recebimentos semestrais", somaSemestral, resultado.totais.receitaTotal),
     linha(
       "Total do fluxo de caixa",
@@ -489,13 +556,13 @@ export function reconciliar(
 
   for (const m of auditoria.memorias) {
     const exibido = resultado.empreendimentos.find((r) => r.id === m.id)?.retornoInvestidor ?? 0;
-    linhas.push(linha(m.nome, m.totais.investidor, exibido));
+    linhas.push(linha(m.nome, ajustadoPorId.get(m.id) ?? 0, exibido));
   }
 
   linhas.push(
     linha(
       "Soma do gráfico comparativo",
-      auditoria.memorias.reduce((a, m) => a + m.totais.investidor, 0),
+      somaSemestral,
       resultado.empreendimentos.reduce((a, r) => a + r.retornoInvestidor, 0),
     ),
   );
@@ -634,7 +701,9 @@ export function executarTestes(
     const ultimo = qualquer.lotes.at(-1);
     add(
       "IPCA",
-      ipcaLigado ? "IPCA ligado aumenta o valor conforme os meses" : "IPCA desligado mantém o valor-base",
+      ipcaLigado
+        ? "IPCA ligado aumenta o valor conforme os meses"
+        : "IPCA desligado mantém o valor-base",
       ipcaLigado
         ? !!ultimo && !!primeiro && ultimo.valorCorrigido >= primeiro.valorCorrigido
         : qualquer.lotes.every((l) => Math.abs(l.fator - 1) < 1e-12),
@@ -651,20 +720,48 @@ export function executarTestes(
     add(
       "IPCA",
       "Correção aplicada uma única vez, na data da venda",
-      qualquer.lotes.every(
-        (l) => Math.abs(l.valorCorrigido - l.valorBase * l.fator) < 1e-6,
-      ),
+      qualquer.lotes.every((l) => Math.abs(l.valorCorrigido - l.valorBase * l.fator) < 1e-6),
       "valor corrigido = valor-base × fator acumulado",
     );
   }
 
   // Indicadores
-  const somaMensal = auditoria.totalInvestidor;
+  const somaMensal = auditoria.semestres.reduce((a, s) => a + s.total, 0);
   add(
     "Indicadores",
     "Valor projetado = soma dos recebimentos do investidor",
     Math.abs(somaMensal - resultado.indicadores.valorProjetado) <= TOLERANCIA,
     `R$ ${(somaMensal - resultado.indicadores.valorProjetado).toFixed(4)} de diferença`,
+  );
+  const antec = auditoria.antecipacao;
+  add(
+    "Antecipação",
+    antec.ativa
+      ? "Antecipado = original − correção do IPCA futuro"
+      : "Sem antecipação: o cronograma original é mantido",
+    Math.abs(antec.totalOriginal - antec.totalCorrecaoRetirada - antec.totalAjustado) <= TOLERANCIA,
+    `retirada de R$ ${antec.totalCorrecaoRetirada.toFixed(2)}`,
+  );
+  add(
+    "Antecipação",
+    "Recebimentos até a data da antecipação permanecem inalterados",
+    antec.mesCorteAbs === null ||
+      Math.abs(
+        auditoria.semestres
+          .filter((s) => s.mesAbs < antec.mesCorteAbs!)
+          .reduce((a, s) => a + s.total, 0) -
+          auditoria.semestresOriginais
+            .filter((s) => s.mesAbs < antec.mesCorteAbs!)
+            .reduce((a, s) => a + s.total, 0),
+      ) <= TOLERANCIA,
+    "valores vencidos conferidos",
+  );
+  const tirDet = resultado.tirDetalhe;
+  add(
+    "Indicadores",
+    "TIR calculada a partir da data de hoje",
+    tirDet.valorInvestido === resultado.indicadores.valorInvestido,
+    `início em ${tirDet.dataInicio} · ${tirDet.quantidadeRecebimentos} recebimentos`,
   );
   add(
     "Indicadores",
@@ -710,9 +807,13 @@ export function executarTestes(
   const totalAjustado = auditoria.semestres.reduce((a, x) => a + x.total, 0);
   add(
     "Antecipação",
-    "Total antes = total depois da antecipação",
-    Math.abs(totalOriginal - totalAjustado) <= TOLERANCIA,
-    `${ant.ativa ? "ativa" : "inativa"} · R$ ${(totalOriginal - totalAjustado).toFixed(4)}`,
+    "Total depois = total antes − IPCA futuro abdicado",
+    Math.abs(totalOriginal - ant.totalCorrecaoRetirada - totalAjustado) <= TOLERANCIA,
+    `${ant.ativa ? "ativa" : "inativa"} · R$ ${(
+      totalOriginal -
+      ant.totalCorrecaoRetirada -
+      totalAjustado
+    ).toFixed(4)}`,
   );
   for (const m of auditoria.memorias) {
     const antes = auditoria.semestresOriginais.reduce(
@@ -722,23 +823,22 @@ export function executarTestes(
     const depois = auditoria.semestres.reduce((a, x) => a + (x.porEmpreendimento[m.id] ?? 0), 0);
     add(
       "Antecipação",
-      `Total de ${m.nome} preservado`,
-      Math.abs(antes - depois) <= TOLERANCIA,
+      `Total de ${m.nome} nunca aumenta com a antecipação`,
+      depois - antes <= TOLERANCIA,
       formatarDiferenca(antes - depois),
     );
   }
   add(
     "Antecipação",
-    "Valor projetado inalterado",
+    "Valor projetado = fluxo com antecipação",
     Math.abs(totalAjustado - resultado.indicadores.valorProjetado) <= TOLERANCIA,
     formatarDiferenca(totalAjustado - resultado.indicadores.valorProjetado),
   );
   add(
     "Antecipação",
     "Acumulado termina em 100% do valor projetado",
-    Math.abs(
-      (auditoria.semestres.at(-1)?.acumulado ?? 0) - resultado.indicadores.valorProjetado,
-    ) <= TOLERANCIA,
+    Math.abs((auditoria.semestres.at(-1)?.acumulado ?? 0) - resultado.indicadores.valorProjetado) <=
+      TOLERANCIA,
     "conferido",
   );
   if (ant.ativa && ant.mesCorteAbs !== null) {

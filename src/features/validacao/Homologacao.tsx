@@ -137,7 +137,11 @@ export function Homologacao() {
             <option value="antes-da-entrega">Alento / Miradas</option>
           </select>
         </div>
-        <CampoNumero label="Unidades" valor={config.unidades} onChange={(v) => set("unidades", v)} />
+        <CampoNumero
+          label="Unidades"
+          valor={config.unidades}
+          onChange={(v) => set("unidades", v)}
+        />
         <CampoMoeda
           label="Valor da unidade"
           valor={config.valorUnidade}
@@ -161,7 +165,11 @@ export function Homologacao() {
             }}
           />
         ))}
-        <CampoPercentual label="Permuta" valor={config.permuta} onChange={(v) => set("permuta", v)} />
+        <CampoPercentual
+          label="Permuta"
+          valor={config.permuta}
+          onChange={(v) => set("permuta", v)}
+        />
         <CampoMoeda
           label="Valor investido"
           valor={config.valorInvestido}

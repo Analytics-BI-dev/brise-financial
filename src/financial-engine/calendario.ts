@@ -9,3 +9,17 @@ export function mesDePagamento(mes: number): number {
   if (posicao <= 6) return mes + (6 - posicao);
   return mes + (12 - posicao);
 }
+
+/** Absolute month (year*12 + monthIndex) of the current date. */
+export function mesAtualAbs(hoje: Date = new Date()): number {
+  return hoje.getFullYear() * 12 + hoje.getMonth();
+}
+
+/**
+ * Investor entry: the investment happens today, so nothing generated before
+ * it can be paid in the past. Every receipt older than the investor's first
+ * semiannual closing is accumulated into that closing.
+ */
+export function mesPagamentoInvestidor(mesGeracaoAbs: number, mesEntradaAbs: number): number {
+  return Math.max(mesDePagamento(mesGeracaoAbs), mesDePagamento(mesEntradaAbs));
+}
