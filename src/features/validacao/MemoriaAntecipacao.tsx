@@ -35,7 +35,7 @@ export function MemoriaAntecipacao({
       ? ant.mesUltimoOriginalAbs - ant.mesCorteAbs
       : 0;
 
-  const correcaoRetirada = ant.totalCorrecaoRetirada;
+  const correcaoRetirada = ant.totalRenunciado;
   const diferencaTotal = totalOriginal - correcaoRetirada - totalAjustado;
   const tir = resultado.tirDetalhe;
   const diferencaReconciliacao = anteriores + noCorte - resultado.indicadores.valorProjetado;
@@ -65,8 +65,21 @@ export function MemoriaAntecipacao({
           valor={formatarMoeda(ant.valorNormalCorte, true)}
         />
         <Dado
-          rotulo="Total dos recebimentos futuros antecipados"
+          rotulo="Total dos recebimentos futuros (corrigidos)"
+          valor={formatarMoeda(ant.totalOriginalDosAntecipados, true)}
+        />
+        <Dado
+          rotulo="Percentual aplicado"
+          valor={formatarPercentual(ant.percentual, 0)}
+          destaque
+        />
+        <Dado
+          rotulo="Valor efetivamente antecipado (50%)"
           valor={formatarMoeda(ant.totalAntecipado, true)}
+        />
+        <Dado
+          rotulo="Valor renunciado (50%)"
+          valor={formatarMoeda(ant.totalRenunciado, true)}
         />
         <Dado
           rotulo="Valor final recebido na data"
@@ -94,9 +107,16 @@ export function MemoriaAntecipacao({
           rotulo="Semestres no fluxo (antes → depois)"
           valor={`${auditoria.semestresOriginais.length} → ${auditoria.semestres.length}`}
         />
-        <Dado rotulo="Total antes da antecipação" valor={formatarMoeda(totalOriginal, true)} />
-        <Dado rotulo="IPCA futuro abdicado" valor={formatarMoeda(correcaoRetirada, true)} />
-        <Dado rotulo="Total depois da antecipação" valor={formatarMoeda(totalAjustado, true)} />
+        <Dado
+          rotulo="Valor projetado antes da antecipação"
+          valor={formatarMoeda(totalOriginal, true)}
+        />
+        <Dado rotulo="Valor renunciado" valor={formatarMoeda(correcaoRetirada, true)} />
+        <Dado
+          rotulo="Valor projetado depois da antecipação"
+          valor={formatarMoeda(totalAjustado, true)}
+          destaque
+        />
         <Dado
           rotulo="Valor-base dos antecipados (sem IPCA)"
           valor={formatarMoeda(
@@ -104,10 +124,7 @@ export function MemoriaAntecipacao({
             true,
           )}
         />
-        <Dado
-          rotulo="Valor original dos antecipados"
-          valor={formatarMoeda(ant.totalOriginalDosAntecipados, true)}
-        />
+
       </div>
 
       <div>
@@ -149,9 +166,11 @@ export function MemoriaAntecipacao({
                 <tr>
                   <Th>Empreendimento</Th>
                   <Th>Data original</Th>
-                  <Th className="text-right">Valor original</Th>
+                  <Th className="text-right">Valor-base</Th>
+                  <Th className="text-right">Valor corrigido</Th>
+                  <Th className="text-right">Antecipado (50%)</Th>
+                  <Th className="text-right">Renunciado (50%)</Th>
                   <Th>Data antecipada</Th>
-                  <Th>Status</Th>
                 </tr>
               </thead>
               <tbody>
@@ -163,7 +182,7 @@ export function MemoriaAntecipacao({
                     <Td className="text-right">{formatarMoeda(p.valorOriginalCorrigido, true)}</Td>
                     <Td className="text-right">{formatarMoeda(p.valorAntecipado, true)}</Td>
                     <Td className="text-right text-muted-foreground">
-                      − {formatarMoeda(p.correcaoRetirada, true)}
+                      − {formatarMoeda(p.valorRenunciado, true)}
                     </Td>
                     <Td>{ant.dataCorte ? rotuloMes(ant.dataCorte) : "—"}</Td>
                   </tr>
@@ -209,7 +228,20 @@ export function MemoriaAntecipacao({
           </span>
           <StatusPill status={statusDaDiferenca(diferencaTotal)} />
           <span className="numeric">
-            Antes − IPCA abdicado vs. depois: R$ {diferencaTotal.toFixed(4)}
+            Antes − renunciado vs. depois: R$ {diferencaTotal.toFixed(4)}
+          </span>
+          <StatusPill
+            status={statusDaDiferenca(
+              ant.totalOriginalDosAntecipados - ant.totalAntecipado - ant.totalRenunciado,
+            )}
+          />
+          <span className="numeric">
+            Futuro original = antecipado + renunciado: R${" "}
+            {(
+              ant.totalOriginalDosAntecipados -
+              ant.totalAntecipado -
+              ant.totalRenunciado
+            ).toFixed(4)}
           </span>
         </div>
       </div>

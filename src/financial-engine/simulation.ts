@@ -361,6 +361,8 @@ function antecipacaoVazia(): ResultadoAntecipacao {
     valorNormalCorte: 0,
     valorFinalCorte: 0,
     totalOriginalDosAntecipados: 0,
+    percentual: 0.5,
+    totalRenunciado: 0,
     totalCorrecaoRetirada: 0,
     totalOriginal: 0,
     totalAjustado: 0,

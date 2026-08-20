@@ -7,12 +7,14 @@ import { mesDePagamento } from "./calendario";
  *
  * Date: the first semiannual payment after the last delivery, plus six months.
  *
- * Money: every receipt open after that date is brought forward keeping its
- * BASE value and receiving IPCA only until the antecipation date. The monetary
- * correction that would accrue between the antecipation and the original date
- * is given up by the investor — so, with IPCA on, the antecipated flow is
- * smaller than the original one.
+ * Money: the whole flow is generated normally (including IPCA). Every receipt
+ * open after that date is summed at its full corrected value and the investor
+ * receives only 50% of that total on the antecipation date. The other 50% is
+ * given up and never appears in the flow again.
  */
+
+/** Share of the future flow effectively paid on the antecipation date. */
+export const PERCENTUAL_ANTECIPACAO = 0.5;
 
 /** One investor receipt, still expressed as base value + indexation rule. */
 export interface RecebimentoInvestidor {
@@ -51,9 +53,11 @@ export interface ParcelaAntecipada {
   valorBase: number;
   /** What would be received on the original date (IPCA until then). */
   valorOriginalCorrigido: number;
-  /** What is received on the antecipation date (IPCA until the cut). */
+  /** What is received on the antecipation date (50% of the corrected value). */
   valorAntecipado: number;
-  /** Correction given up: original − antecipated. */
+  /** Value given up: original − antecipated (the other 50%). */
+  valorRenunciado: number;
+  /** Kept for compatibility: same as valorRenunciado. */
   correcaoRetirada: number;
   /** Kept for compatibility: the value effectively antecipated. */
   valor: number;
@@ -88,7 +92,11 @@ export interface ResultadoAntecipacao {
   totalAntecipado: number;
   /** Sum of what those receipts would be worth on their original dates. */
   totalOriginalDosAntecipados: number;
-  /** Future IPCA given up by antecipating. */
+  /** Share applied to the future flow (0.5). */
+  percentual: number;
+  /** Half of the future flow given up by antecipating. */
+  totalRenunciado: number;
+  /** Kept for compatibility: same as totalRenunciado. */
   totalCorrecaoRetirada: number;
   /** Total of the whole flow without antecipation. */
   totalOriginal: number;
@@ -152,6 +160,8 @@ export function aplicarAntecipacao(
     porEmpreendimento: {},
     totalAntecipado: 0,
     totalOriginalDosAntecipados: 0,
+    percentual: PERCENTUAL_ANTECIPACAO,
+    totalRenunciado: 0,
     totalCorrecaoRetirada: 0,
     totalOriginal,
     totalAjustado: totalOriginal,
@@ -191,7 +201,8 @@ export function aplicarAntecipacao(
   for (const r of recebimentos) {
     const antecipado = r.mesPagamentoAbs > mesCorteAbs;
     const mesFinal = antecipado ? mesCorteAbs : r.mesPagamentoAbs;
-    const valor = valorNoLimite(r, ipcaMensal, antecipado ? mesCorteAbs : undefined);
+    const integral = valorNoLimite(r, ipcaMensal);
+    const valor = antecipado ? integral * PERCENTUAL_ANTECIPACAO : integral;
 
     ajustados.push({ recebimento: r, mesPagamentoAbs: mesFinal, valor, antecipado });
     if (valor !== 0) acumular(fluxo, r.empreendimentoId, mesFinal, valor);
@@ -202,7 +213,7 @@ export function aplicarAntecipacao(
       continue;
     }
 
-    const original = valorNoLimite(r, ipcaMensal);
+    const original = integral;
     totalAntecipado += valor;
     totalOriginalDosAntecipados += original;
     porEmpreendimento[r.empreendimentoId] = (porEmpreendimento[r.empreendimentoId] ?? 0) + valor;
@@ -217,13 +228,15 @@ export function aplicarAntecipacao(
         valorBase: 0,
         valorOriginalCorrigido: 0,
         valorAntecipado: 0,
+        valorRenunciado: 0,
         correcaoRetirada: 0,
         valor: 0,
       } satisfies ParcelaAntecipada);
     atual.valorBase += r.valorBase;
     atual.valorOriginalCorrigido += original;
     atual.valorAntecipado += valor;
-    atual.correcaoRetirada += original - valor;
+    atual.valorRenunciado += original - valor;
+    atual.correcaoRetirada = atual.valorRenunciado;
     atual.valor = atual.valorAntecipado;
     agrupadas.set(chave, atual);
   }
@@ -245,6 +258,8 @@ export function aplicarAntecipacao(
       porEmpreendimento,
       totalAntecipado,
       totalOriginalDosAntecipados,
+      percentual: PERCENTUAL_ANTECIPACAO,
+      totalRenunciado: totalOriginalDosAntecipados - totalAntecipado,
       totalCorrecaoRetirada: totalOriginalDosAntecipados - totalAntecipado,
       totalAjustado,
       parcelasMovidas: parcelas.length,

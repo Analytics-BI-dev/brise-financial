@@ -737,10 +737,10 @@ export function executarTestes(
   add(
     "Antecipação",
     antec.ativa
-      ? "Antecipado = original − correção do IPCA futuro"
+      ? "Antecipado = 50% do fluxo futuro corrigido"
       : "Sem antecipação: o cronograma original é mantido",
     Math.abs(antec.totalOriginal - antec.totalCorrecaoRetirada - antec.totalAjustado) <= TOLERANCIA,
-    `retirada de R$ ${antec.totalCorrecaoRetirada.toFixed(2)}`,
+    `renunciado R$ ${antec.totalRenunciado.toFixed(2)}`,
   );
   add(
     "Antecipação",
@@ -807,11 +807,11 @@ export function executarTestes(
   const totalAjustado = auditoria.semestres.reduce((a, x) => a + x.total, 0);
   add(
     "Antecipação",
-    "Total depois = total antes − IPCA futuro abdicado",
-    Math.abs(totalOriginal - ant.totalCorrecaoRetirada - totalAjustado) <= TOLERANCIA,
+    "Total depois = total antes − valor renunciado (50%)",
+    Math.abs(totalOriginal - ant.totalRenunciado - totalAjustado) <= TOLERANCIA,
     `${ant.ativa ? "ativa" : "inativa"} · R$ ${(
       totalOriginal -
-      ant.totalCorrecaoRetirada -
+      ant.totalRenunciado -
       totalAjustado
     ).toFixed(4)}`,
   );
@@ -843,6 +843,15 @@ export function executarTestes(
   );
   if (ant.ativa && ant.mesCorteAbs !== null) {
     const corte = ant.mesCorteAbs;
+    add(
+      "Antecipação",
+      "Futuro dividido em 50% antecipado e 50% renunciado",
+      Math.abs(ant.totalAntecipado - ant.totalRenunciado) <= TOLERANCIA &&
+        Math.abs(
+          ant.totalOriginalDosAntecipados - (ant.totalAntecipado + ant.totalRenunciado),
+        ) <= TOLERANCIA,
+      `antecipado R$ ${ant.totalAntecipado.toFixed(2)} · renunciado R$ ${ant.totalRenunciado.toFixed(2)}`,
+    );
     add(
       "Antecipação",
       "Nenhum recebimento após a data de antecipação",
