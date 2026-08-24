@@ -8,7 +8,6 @@ const navegacao = [
   { to: "/", label: "Dashboard" },
   { to: "/premissas", label: "Premissas" },
   { to: "/fluxo", label: "Fluxo de caixa" },
-  { to: "/validacao", label: "Validação" },
   { to: "/apresentacao", label: "Apresentação" },
 ] as const;
 
