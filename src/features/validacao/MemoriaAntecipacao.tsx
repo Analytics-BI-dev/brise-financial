@@ -69,18 +69,41 @@ export function MemoriaAntecipacao({
           valor={formatarMoeda(ant.totalOriginalDosAntecipados, true)}
         />
         <Dado
-          rotulo="Percentual aplicado"
+          rotulo="Retorno total sem IPCA (referência)"
+          valor={formatarMoeda(ant.retornoTotalSemIpca, true)}
+        />
+        <Dado rotulo="% Capital" valor={formatarPercentual(ant.percentualCapital, 2)} />
+        <Dado rotulo="% Lucro" valor={formatarPercentual(ant.percentualLucro, 2)} />
+        <Dado
+          rotulo="Percentual do lucro pago"
           valor={formatarPercentual(ant.percentual, 0)}
           destaque
         />
         <Dado
-          rotulo="Valor efetivamente antecipado (50%)"
+          rotulo="Fator aplicado (capital + 50% lucro)"
+          valor={formatarPercentual(ant.fatorAntecipacao, 2)}
+        />
+        <Dado
+          rotulo="Recebimentos futuros sem IPCA"
+          valor={formatarMoeda(ant.totalBaseFuturo, true)}
+        />
+        <Dado
+          rotulo="Capital dos futuros (100% pago)"
+          valor={formatarMoeda(ant.totalCapitalFuturo, true)}
+        />
+        <Dado
+          rotulo="Lucro dos futuros (50% pago)"
+          valor={formatarMoeda(ant.totalLucroFuturo, true)}
+        />
+        <Dado
+          rotulo="Valor efetivamente antecipado"
           valor={formatarMoeda(ant.totalAntecipado, true)}
         />
         <Dado
-          rotulo="Valor renunciado (50%)"
+          rotulo="Valor renunciado"
           valor={formatarMoeda(ant.totalRenunciado, true)}
         />
+
         <Dado
           rotulo="Valor final recebido na data"
           valor={formatarMoeda(ant.valorFinalCorte, true)}

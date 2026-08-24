@@ -449,6 +449,7 @@ export function auditar(entrada: {
     contexto.ativos.map((e) => mesAbsoluto(e.dataLancamento) + MESES_ATE_ENTREGA),
     contexto.premissas.anteciparRecebimentos === true,
     contexto.ipcaMensal,
+    contexto.valorInvestido,
   );
 
   const semestres = construir(

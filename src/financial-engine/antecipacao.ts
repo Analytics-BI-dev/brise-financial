@@ -7,14 +7,19 @@ import { mesDePagamento } from "./calendario";
  *
  * Date: the first semiannual payment after the last delivery, plus six months.
  *
- * Money: the whole flow is generated normally (including IPCA). Every receipt
- * open after that date is summed at its full corrected value and the investor
- * receives only 50% of that total on the antecipation date. The other 50% is
- * given up and never appears in the flow again.
+ * Money: every receipt open after that date is taken WITHOUT IPCA (base value)
+ * and split proportionally between capital and profit, using the whole flow
+ * without IPCA as reference:
+ *   % capital = valor investido / retorno total sem IPCA
+ *   % lucro   = 1 − % capital
+ * On the antecipation date the investor gets 100% of the capital and only 50%
+ * of the profit. The remaining profit is given up and never appears again.
+ * Receipts on or before the antecipation date are untouched.
  */
 
-/** Share of the future flow effectively paid on the antecipation date. */
+/** Share of the profit component effectively paid on the antecipation date. */
 export const PERCENTUAL_ANTECIPACAO = 0.5;
+
 
 /** One investor receipt, still expressed as base value + indexation rule. */
 export interface RecebimentoInvestidor {
@@ -53,6 +58,13 @@ export interface ParcelaAntecipada {
   valorBase: number;
   /** What would be received on the original date (IPCA until then). */
   valorOriginalCorrigido: number;
+  /** Capital component of the base value (paid in full). */
+  capital: number;
+  /** Profit component of the base value. */
+  lucro: number;
+  /** Profit effectively paid (50% of `lucro`). */
+  lucroPago: number;
+
   /** What is received on the antecipation date (50% of the corrected value). */
   valorAntecipado: number;
   /** Value given up: original − antecipated (the other 50%). */
@@ -92,12 +104,27 @@ export interface ResultadoAntecipacao {
   totalAntecipado: number;
   /** Sum of what those receipts would be worth on their original dates. */
   totalOriginalDosAntecipados: number;
-  /** Share applied to the future flow (0.5). */
+  /** Share of the profit component paid on the antecipation date (0.5). */
   percentual: number;
-  /** Half of the future flow given up by antecipating. */
+  /** Whole flow measured without any IPCA — reference of the capital/profit split. */
+  retornoTotalSemIpca: number;
+  /** valor investido / retorno total sem IPCA (capped at 1). */
+  percentualCapital: number;
+  /** 1 − percentualCapital. */
+  percentualLucro: number;
+  /** Effective factor applied to the future base flow: capital + 50% profit. */
+  fatorAntecipacao: number;
+  /** Sum of the future receipts without IPCA. */
+  totalBaseFuturo: number;
+  /** Capital component of the future receipts (paid in full). */
+  totalCapitalFuturo: number;
+  /** Profit component of the future receipts (only 50% is paid). */
+  totalLucroFuturo: number;
+  /** Value given up by antecipating. */
   totalRenunciado: number;
   /** Kept for compatibility: same as totalRenunciado. */
   totalCorrecaoRetirada: number;
+
   /** Total of the whole flow without antecipation. */
   totalOriginal: number;
   /** Total of the whole flow with antecipation. */
@@ -133,11 +160,15 @@ export function aplicarAntecipacao(
   mesesEntregaAbs: number[],
   ativa: boolean,
   ipcaMensal: number,
+  valorInvestido = 0,
 ): SaidaAntecipacao {
   const mesUltimaEntregaAbs = mesesEntregaAbs.length ? Math.max(...mesesEntregaAbs) : null;
   let mesUltimoOriginalAbs: number | null = null;
   let totalOriginal = 0;
+  // Reference of the capital/profit split: the whole flow with no IPCA at all.
+  let retornoTotalSemIpca = 0;
   for (const r of recebimentos) {
+    retornoTotalSemIpca += r.valorBase;
     const valor = valorNoLimite(r, ipcaMensal);
     if (valor === 0) continue;
     totalOriginal += valor;
@@ -145,6 +176,11 @@ export function aplicarAntecipacao(
       mesUltimoOriginalAbs = r.mesPagamentoAbs;
     }
   }
+
+  const percentualCapital =
+    retornoTotalSemIpca > 0 ? Math.min(1, Math.max(0, valorInvestido) / retornoTotalSemIpca) : 1;
+  const percentualLucro = 1 - percentualCapital;
+  const fatorAntecipacao = percentualCapital + percentualLucro * PERCENTUAL_ANTECIPACAO;
 
   const base: ResultadoAntecipacao = {
     ativa: false,
@@ -161,6 +197,13 @@ export function aplicarAntecipacao(
     totalAntecipado: 0,
     totalOriginalDosAntecipados: 0,
     percentual: PERCENTUAL_ANTECIPACAO,
+    retornoTotalSemIpca,
+    percentualCapital,
+    percentualLucro,
+    fatorAntecipacao,
+    totalBaseFuturo: 0,
+    totalCapitalFuturo: 0,
+    totalLucroFuturo: 0,
     totalRenunciado: 0,
     totalCorrecaoRetirada: 0,
     totalOriginal,
@@ -170,6 +213,7 @@ export function aplicarAntecipacao(
     valorNormalCorte: 0,
     valorFinalCorte: 0,
   };
+
 
   const mesCorteAbs = mesDeAntecipacao(mesesEntregaAbs);
 
@@ -195,6 +239,7 @@ export function aplicarAntecipacao(
   const porEmpreendimento: Record<string, number> = {};
   let totalAntecipado = 0;
   let totalOriginalDosAntecipados = 0;
+  let totalBaseFuturo = 0;
   let valorNormalCorte = 0;
   let totalAjustado = 0;
 
@@ -202,7 +247,9 @@ export function aplicarAntecipacao(
     const antecipado = r.mesPagamentoAbs > mesCorteAbs;
     const mesFinal = antecipado ? mesCorteAbs : r.mesPagamentoAbs;
     const integral = valorNoLimite(r, ipcaMensal);
-    const valor = antecipado ? integral * PERCENTUAL_ANTECIPACAO : integral;
+    // Antecipated receipts ignore IPCA entirely: base value split into
+    // capital (100% paid) + profit (only 50% paid).
+    const valor = antecipado ? r.valorBase * fatorAntecipacao : integral;
 
     ajustados.push({ recebimento: r, mesPagamentoAbs: mesFinal, valor, antecipado });
     if (valor !== 0) acumular(fluxo, r.empreendimentoId, mesFinal, valor);
@@ -216,6 +263,7 @@ export function aplicarAntecipacao(
     const original = integral;
     totalAntecipado += valor;
     totalOriginalDosAntecipados += original;
+    totalBaseFuturo += r.valorBase;
     porEmpreendimento[r.empreendimentoId] = (porEmpreendimento[r.empreendimentoId] ?? 0) + valor;
 
     const chave = `${r.empreendimentoId}|${r.mesPagamentoAbs}`;
@@ -227,6 +275,9 @@ export function aplicarAntecipacao(
         dataOriginal: isoDeMesAbsoluto(r.mesPagamentoAbs),
         valorBase: 0,
         valorOriginalCorrigido: 0,
+        capital: 0,
+        lucro: 0,
+        lucroPago: 0,
         valorAntecipado: 0,
         valorRenunciado: 0,
         correcaoRetirada: 0,
@@ -234,6 +285,9 @@ export function aplicarAntecipacao(
       } satisfies ParcelaAntecipada);
     atual.valorBase += r.valorBase;
     atual.valorOriginalCorrigido += original;
+    atual.capital += r.valorBase * percentualCapital;
+    atual.lucro += r.valorBase * percentualLucro;
+    atual.lucroPago += r.valorBase * percentualLucro * PERCENTUAL_ANTECIPACAO;
     atual.valorAntecipado += valor;
     atual.valorRenunciado += original - valor;
     atual.correcaoRetirada = atual.valorRenunciado;
@@ -259,6 +313,9 @@ export function aplicarAntecipacao(
       totalAntecipado,
       totalOriginalDosAntecipados,
       percentual: PERCENTUAL_ANTECIPACAO,
+      totalBaseFuturo,
+      totalCapitalFuturo: totalBaseFuturo * percentualCapital,
+      totalLucroFuturo: totalBaseFuturo * percentualLucro,
       totalRenunciado: totalOriginalDosAntecipados - totalAntecipado,
       totalCorrecaoRetirada: totalOriginalDosAntecipados - totalAntecipado,
       totalAjustado,
@@ -267,5 +324,6 @@ export function aplicarAntecipacao(
       valorNormalCorte,
       valorFinalCorte: valorNormalCorte + totalAntecipado,
     },
+
   };
 }

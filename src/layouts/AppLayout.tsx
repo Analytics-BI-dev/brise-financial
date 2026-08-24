@@ -8,6 +8,7 @@ const navegacao = [
   { to: "/", label: "Dashboard" },
   { to: "/premissas", label: "Premissas" },
   { to: "/fluxo", label: "Fluxo de caixa" },
+  { to: "/validacao", label: "Validação" },
   { to: "/apresentacao", label: "Apresentação" },
 ] as const;
 
@@ -18,7 +19,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
       <main className="mx-auto w-full max-w-[1360px] px-5 pb-32 pt-10 sm:px-10">{children}</main>
       <footer className="border-t border-border/60">
         <div className="mx-auto flex w-full max-w-[1360px] flex-wrap items-center justify-between gap-3 px-5 py-8 text-xs font-light text-muted-foreground sm:px-10">
-          <span>Antologia Incorporadora - Material confidencial para investidores</span>
+          <span>Antologia Incorporadora · Material confidencial para investidores</span>
           <span>Projeções baseadas na planilha oficial da operação</span>
         </div>
       </footer>

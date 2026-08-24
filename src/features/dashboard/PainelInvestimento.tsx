@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { motion } from "motion/react";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
@@ -5,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { CENARIOS_ORDEM } from "@/constants";
 import { useSimulationStore } from "@/store/simulation-store";
 import { cn } from "@/lib/utils";
-import { formatarMoeda, formatarPercentual } from "@/utils/format";
+import { formatarMoeda, formatarPercentual, parseNumeroInput } from "@/utils/format";
 import { calcularValorInvestido } from "@/financial-engine";
 
 export function PainelInvestimento() {
@@ -15,6 +16,29 @@ export function PainelInvestimento() {
 
   const valorInvestido = calcularValorInvestido(premissas.valorCota, premissas.quantidadeCotas);
   const maxCotas = Math.max(1, Math.floor(premissas.valorCaptacao / premissas.valorCota));
+  const cotasInteiras = Number.isInteger(premissas.quantidadeCotas) && premissas.quantidadeCotas > 0;
+
+  const [editando, setEditando] = useState(false);
+  const [rascunho, setRascunho] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (editando) inputRef.current?.select();
+  }, [editando]);
+
+  function iniciarEdicao() {
+    setRascunho(formatarMoeda(valorInvestido));
+    setEditando(true);
+  }
+
+  function confirmarEdicao() {
+    const bruto = parseNumeroInput(rascunho);
+    const limitado = Math.min(premissas.valorCaptacao, Math.max(0, bruto));
+    if (limitado > 0) {
+      atualizarPremissas({ quantidadeCotas: limitado / premissas.valorCota });
+    }
+    setEditando(false);
+  }
 
   return (
     <motion.section
@@ -29,19 +53,40 @@ export function PainelInvestimento() {
             <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
               Quanto você deseja investir
             </p>
-            <p className="numeric mt-2 text-4xl font-light text-gradient-brand">
-              {formatarMoeda(valorInvestido)}
-            </p>
+            {editando ? (
+              <input
+                ref={inputRef}
+                inputMode="numeric"
+                value={rascunho}
+                onChange={(e) => setRascunho(e.target.value)}
+                onBlur={confirmarEdicao}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") confirmarEdicao();
+                  if (e.key === "Escape") setEditando(false);
+                }}
+                className="numeric mt-2 w-full max-w-[16ch] border-0 border-b border-primary/40 bg-transparent p-0 text-4xl font-light text-foreground outline-none focus:border-primary"
+              />
+            ) : (
+              <button
+                type="button"
+                onClick={iniciarEdicao}
+                title="Clique para digitar outro valor"
+                className="numeric mt-2 block text-left text-4xl font-light text-gradient-brand transition-opacity hover:opacity-80"
+              >
+                {formatarMoeda(valorInvestido)}
+              </button>
+            )}
             <p className="mt-1 text-sm text-muted-foreground">
-              {premissas.quantidadeCotas} {premissas.quantidadeCotas === 1 ? "cota" : "cotas"} de{" "}
-              {formatarMoeda(premissas.valorCota)}
+              {cotasInteiras
+                ? `${premissas.quantidadeCotas} ${premissas.quantidadeCotas === 1 ? "cota" : "cotas"} de ${formatarMoeda(premissas.valorCota)}`
+                : "Valor de investimento personalizado"}
             </p>
           </div>
         </div>
 
         <div className="mt-6">
           <Slider
-            value={[Math.min(premissas.quantidadeCotas, maxCotas)]}
+            value={[Math.min(Math.max(1, Math.round(premissas.quantidadeCotas)), maxCotas)]}
             min={1}
             max={maxCotas}
             step={1}
@@ -49,6 +94,7 @@ export function PainelInvestimento() {
           />
         </div>
       </div>
+
 
       <div className="space-y-5 lg:border-l lg:border-border lg:pl-8">
         <div>

@@ -116,6 +116,7 @@ export function simular({
     mesesEntrega,
     premissas.anteciparRecebimentos === true,
     ipcaMensal,
+    valorInvestido,
   );
 
   let mesInicio = Number.POSITIVE_INFINITY;
@@ -362,6 +363,14 @@ function antecipacaoVazia(): ResultadoAntecipacao {
     valorFinalCorte: 0,
     totalOriginalDosAntecipados: 0,
     percentual: 0.5,
+    retornoTotalSemIpca: 0,
+    percentualCapital: 1,
+    percentualLucro: 0,
+    fatorAntecipacao: 1,
+    totalBaseFuturo: 0,
+    totalCapitalFuturo: 0,
+    totalLucroFuturo: 0,
+
     totalRenunciado: 0,
     totalCorrecaoRetirada: 0,
     totalOriginal: 0,
