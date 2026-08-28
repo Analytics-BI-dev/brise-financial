@@ -76,6 +76,6 @@ export const useSimulationStore = create<SimulationState>()(
 
       restaurarPadrao: () => set(estadoInicial()),
     }),
-    { name: "permuta-simulador-v5", skipHydration: true },
+    { name: "permuta-simulador-v6", skipHydration: true },
   ),
 );

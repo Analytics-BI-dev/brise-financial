@@ -3,8 +3,8 @@ import type { Cenario, CenarioId, Empreendimento, PremissasGlobais } from "@/typ
 export const PREMISSAS_INICIAIS: PremissasGlobais = {
   valorTerreno: 18_750_000,
   valorCaptacao: 18_750_000,
-  valorCota: 250_000,
-  quantidadeCotas: 4,
+  valorCota: 100_000,
+  quantidadeCotas: 10,
   aplicarIpca: false,
   anteciparRecebimentos: false,
   ipcaAnual: 0.045,
